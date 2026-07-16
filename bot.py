@@ -12,6 +12,7 @@ pushed to the admin's Telegram chat so a human can take over.
 """
 import logging
 import os
+import traceback
 from datetime import datetime, timedelta
 
 from telegram import (
@@ -216,15 +217,19 @@ async def contact_received(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     context.user_data["status"] = "diagnostic_booked"
 
     user = update.effective_user
-    log_lead(
-        telegram_username=user.username or "",
-        telegram_id=user.id,
-        name=context.user_data.get("name", ""),
-        phone=phone,
-        interest=context.user_data.get("interest", ""),
-        preferred_time=context.user_data.get("preferred_time", ""),
-        status="diagnostic_booked",
-    )
+    try:
+        log_lead(
+            telegram_username=user.username or "",
+            telegram_id=user.id,
+            name=context.user_data.get("name", ""),
+            phone=phone,
+            interest=context.user_data.get("interest", ""),
+            preferred_time=context.user_data.get("preferred_time", ""),
+            status="diagnostic_booked",
+        )
+    except Exception:
+        err_text = traceback.format_exc().replace("\n", " | ")
+        logger.error("SHEET_WRITE_FAILED: %s", err_text)
 
     await update.message.reply_text(
         "Записали вас на безкоштовну діагностику фінансового потенціалу. 🌿\n"
@@ -233,7 +238,6 @@ async def contact_received(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     )
     await _notify_admin(context, user, context.user_data, note="Готовий(-а) до діагностики")
 
-    # Schedule a next-day follow-up if they picked "week" and haven't replied by then
     if context.job_queue and context.user_data.get("preferred_time") == "week":
         context.job_queue.run_once(
             _followup_job,
@@ -261,7 +265,6 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return ConversationHandler.END
 
 
-# --- Free-text fallback outside the guided flow (price / "what is this" / СТАРТ) ---
 async def free_text_fallback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     text = update.message.text.lower()
 
@@ -277,7 +280,6 @@ async def free_text_fallback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text(WHAT_IS_THIS_ANSWER)
         return
 
-    # Anything else: don't guess — hand off to a human
     await update.message.reply_text(
         "Дякую за повідомлення! Я передала його консультанту Life Energy — з вами зв'яжуться "
         "найближчим часом. Якщо хочете, можу одразу записати вас на безкоштовну діагностику: "
