@@ -1,13 +1,18 @@
 """
 Thin wrapper around gspread for writing leads into the existing Life Energy
-Google Sheet CRM:
-https://docs.google.com/spreadsheets/d/1C8qKB-fpGvoWQyA89pAvtNIlhizuIeyRJUSLv3zKp6A
+Google Sheet CRM.
 
-Expects a service-account JSON key file. See README.md for setup steps.
+Expects a service-account JSON key, provided either as:
+  - GOOGLE_CREDENTIALS_JSON: the full JSON key content pasted as one env var
+    (used on Railway/hosting, where there's no file to upload), or
+  - GOOGLE_CREDENTIALS_PATH: a path to the JSON key file (used when running
+    locally with the file sitting next to bot.py).
+
 The sheet must have a tab (default "Leads") with this header row in row 1:
 
   Timestamp | Telegram | Telegram ID | Ім'я | Телефон | Інтерес | Бажаний час | Статус
 """
+import json
 import os
 from datetime import datetime
 from functools import lru_cache
@@ -19,6 +24,7 @@ SPREADSHEET_ID = os.environ.get(
     "SPREADSHEET_ID", "1C8qKB-fpGvoWQyA89pAvtNIlhizuIeyRJUSLv3zKp6A"
 )
 SHEET_TAB = os.environ.get("SHEET_TAB", "Leads")
+CREDENTIALS_JSON = os.environ.get("GOOGLE_CREDENTIALS_JSON")
 CREDENTIALS_PATH = os.environ.get("GOOGLE_CREDENTIALS_PATH", "google_credentials.json")
 
 SCOPES = [
@@ -44,7 +50,11 @@ TIME_LABELS = {
 
 @lru_cache(maxsize=1)
 def _worksheet():
-    creds = Credentials.from_service_account_file(CREDENTIALS_PATH, scopes=SCOPES)
+    if CREDENTIALS_JSON:
+        info = json.loads(CREDENTIALS_JSON)
+        creds = Credentials.from_service_account_info(info, scopes=SCOPES)
+    else:
+        creds = Credentials.from_service_account_file(CREDENTIALS_PATH, scopes=SCOPES)
     client = gspread.authorize(creds)
     sheet = client.open_by_key(SPREADSHEET_ID)
     try:
